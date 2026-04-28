@@ -264,8 +264,13 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 		}
 	}
 
-	// set the list of validator updates
-	if err = k.SetValidatorUpdates(ctx, updates); err != nil {
+	// Avoid rewriting the same empty ValidatorUpdates value every block. The
+	// ABCI response already carries the current block's updates to CometBFT.
+	if len(updates) > 0 {
+		if err = k.SetValidatorUpdates(ctx, updates); err != nil {
+			return nil, err
+		}
+	} else if err = k.ClearValidatorUpdates(ctx); err != nil {
 		return nil, err
 	}
 

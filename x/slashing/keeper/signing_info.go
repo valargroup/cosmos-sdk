@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"encoding/binary"
 	"time"
 
 	"github.com/bits-and-blooms/bitset"
@@ -12,6 +13,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing/types"
 )
+
+var missedBlockMarkerValue = []byte{1}
 
 // GetValidatorSigningInfo retruns the ValidatorSigningInfo for a specific validator
 // ConsAddress. If not found it returns ErrNoSigningInfoFound, but other errors
@@ -196,6 +199,118 @@ func (k Keeper) SetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddr
 	return k.setMissedBlockBitmapChunk(ctx, addr, chunkIndex, updatedChunk)
 }
 
+// HasMissedBlockAtHeight returns true when a sparse missed block marker exists
+// for a validator at an absolute block height.
+func (k Keeper) HasMissedBlockAtHeight(ctx context.Context, addr sdk.ConsAddress, height int64) (bool, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.ValidatorMissedBlockHeightKey(addr, height))
+	if err != nil {
+		return false, err
+	}
+	return bz != nil, nil
+}
+
+// SetMissedBlockAtHeight records a sparse missed block marker and an ordered
+// pruning index. Healthy signed blocks intentionally do not create markers.
+func (k Keeper) SetMissedBlockAtHeight(ctx context.Context, addr sdk.ConsAddress, height int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	if err := store.Set(types.ValidatorMissedBlockHeightKey(addr, height), missedBlockMarkerValue); err != nil {
+		return err
+	}
+	return store.Set(types.MissedBlockPruningIndexKey(height, addr), missedBlockMarkerValue)
+}
+
+// CountMissedBlocksInWindow counts sparse missed block markers for a validator
+// in [windowStart, windowEnd].
+func (k Keeper) CountMissedBlocksInWindow(ctx context.Context, addr sdk.ConsAddress, windowStart, windowEnd int64) (int64, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := types.ValidatorMissedBlockHeightPrefixKey(addr)
+	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+
+	var count int64
+	for ; iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < len(prefix)+8 {
+			continue
+		}
+
+		height := int64(binary.BigEndian.Uint64(key[len(key)-8:]))
+		if height >= windowStart && height <= windowEnd {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// PruneMissedBlocksBeforeHeight removes sparse missed block markers that are no
+// longer inside any validator's active signed-block window.
+func (k Keeper) PruneMissedBlocksBeforeHeight(ctx context.Context, minHeight int64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	end := append([]byte{}, types.MissedBlockPruningIndexKeyPrefix...)
+	heightBz := make([]byte, 8)
+	binary.BigEndian.PutUint64(heightBz, uint64(minHeight))
+	end = append(end, heightBz...)
+
+	iter, err := store.Iterator(types.MissedBlockPruningIndexKeyPrefix, end)
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < 10 {
+			continue
+		}
+
+		height := int64(binary.BigEndian.Uint64(key[1:9]))
+		addrLen := int(key[9])
+		if len(key) < 10+addrLen {
+			continue
+		}
+
+		addr := sdk.ConsAddress(key[10 : 10+addrLen])
+		if err := store.Delete(types.ValidatorMissedBlockHeightKey(addr, height)); err != nil {
+			return err
+		}
+		if err := store.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteSparseMissedBlocks removes all sparse missed block markers for a validator.
+func (k Keeper) DeleteSparseMissedBlocks(ctx context.Context, addr sdk.ConsAddress) error {
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := types.ValidatorMissedBlockHeightPrefixKey(addr)
+	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < len(prefix)+8 {
+			continue
+		}
+
+		height := int64(binary.BigEndian.Uint64(key[len(key)-8:]))
+		if err := store.Delete(types.MissedBlockPruningIndexKey(height, addr)); err != nil {
+			return err
+		}
+		if err := store.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // DeleteMissedBlockBitmap removes a validator's missed block bitmap from state.
 func (k Keeper) DeleteMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddress) error {
 	store := k.storeService.OpenKVStore(ctx)
@@ -212,7 +327,7 @@ func (k Keeper) DeleteMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddres
 			return err
 		}
 	}
-	return nil
+	return k.DeleteSparseMissedBlocks(ctx, addr)
 }
 
 // IterateMissedBlockBitmap iterates over a validator's signed blocks window
@@ -266,5 +381,27 @@ func (k Keeper) GetValidatorMissedBlocks(ctx context.Context, addr sdk.ConsAddre
 		return false
 	})
 
-	return missedBlocks, err
+	if err != nil {
+		return nil, err
+	}
+
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := types.ValidatorMissedBlockHeightPrefixKey(addr)
+	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	for ; iter.Valid(); iter.Next() {
+		key := iter.Key()
+		if len(key) < len(prefix)+8 {
+			continue
+		}
+
+		height := int64(binary.BigEndian.Uint64(key[len(key)-8:]))
+		missedBlocks = append(missedBlocks, types.NewMissedBlock(height, true))
+	}
+
+	return missedBlocks, nil
 }
