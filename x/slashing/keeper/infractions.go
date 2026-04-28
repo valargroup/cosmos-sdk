@@ -39,6 +39,11 @@ func (k Keeper) HandleValidatorSignature(ctx context.Context, addr cryptotypes.A
 		return err
 	}
 
+	missed := signed == comet.BlockIDFlagAbsent
+	if !missed && signInfo.MissedBlocksCounter == 0 {
+		return nil
+	}
+
 	signedBlocksWindow, err := k.SignedBlocksWindow(ctx)
 	if err != nil {
 		return err
@@ -58,7 +63,6 @@ func (k Keeper) HandleValidatorSignature(ctx context.Context, addr cryptotypes.A
 		return errors.Wrap(err, "failed to get the validator's bitmap value")
 	}
 
-	missed := signed == comet.BlockIDFlagAbsent
 	switch {
 	case !previous && missed:
 		// Bitmap value has changed from not missed to missed, so we flip the bit
