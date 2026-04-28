@@ -3,9 +3,12 @@ package keeper_test
 import (
 	"time"
 
+	"cosmossdk.io/core/comet"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing/testutil"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
+	"go.uber.org/mock/gomock"
 )
 
 func (s *KeeperTestSuite) TestValidatorSigningInfo() {
@@ -95,4 +98,28 @@ func (s *KeeperTestSuite) TestValidatorMissedBlockBitmap_SmallWindow() {
 		require.NoError(err)
 		require.Len(missedBlocks, int(params.SignedBlocksWindow)-1)
 	}
+}
+
+func (s *KeeperTestSuite) TestHandleValidatorSignatureSkipsHealthySignedBlock() {
+	ctx, keeper := s.ctx.WithBlockHeight(10), s.slashingKeeper
+	require := s.Require()
+
+	signingInfo := slashingtypes.NewValidatorSigningInfo(
+		consAddr,
+		1,
+		0,
+		time.Unix(0, 0).UTC(),
+		false,
+		0,
+	)
+	require.NoError(keeper.SetValidatorSigningInfo(ctx, consAddr, signingInfo))
+
+	s.stakingKeeper.EXPECT().IsValidatorJailed(gomock.Any(), consAddr).Return(false, nil)
+
+	require.NoError(keeper.HandleValidatorSignature(ctx, consAddr.Bytes(), 1, comet.BlockIDFlagCommit))
+
+	info, err := keeper.GetValidatorSigningInfo(ctx, consAddr)
+	require.NoError(err)
+	require.Equal(int64(0), info.IndexOffset)
+	require.Equal(int64(0), info.MissedBlocksCounter)
 }
