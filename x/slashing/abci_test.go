@@ -81,7 +81,7 @@ func TestBeginBlocker(t *testing.T) {
 	info, err := slashingKeeper.GetValidatorSigningInfo(ctx, sdk.ConsAddress(pk.Address()))
 	require.NoError(t, err)
 	require.Equal(t, ctx.BlockHeight(), info.StartHeight)
-	require.Equal(t, int64(1), info.IndexOffset)
+	require.Equal(t, int64(0), info.IndexOffset)
 	require.Equal(t, time.Unix(0, 0).UTC(), info.JailedUntil)
 	require.Equal(t, int64(0), info.MissedBlocksCounter)
 

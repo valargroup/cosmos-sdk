@@ -46,12 +46,18 @@ const (
 // - 0x02<consAddrLen (1 Byte)><consAddress_Bytes><chunk_index>: bitmap_chunk
 //
 // - 0x03<accAddrLen (1 Byte)><accAddr_Bytes>: cryptotypes.PubKey
+//
+// - 0x04<consAddrLen (1 Byte)><consAddress_Bytes><height>: sparse missed block
+//
+// - 0x05<height><consAddrLen (1 Byte)><consAddress_Bytes>: sparse missed block pruning index
 
 var (
 	ParamsKey                           = []byte{0x00} // Prefix for params key
 	ValidatorSigningInfoKeyPrefix       = []byte{0x01} // Prefix for signing info
 	ValidatorMissedBlockBitmapKeyPrefix = []byte{0x02} // Prefix for missed block bitmap
 	AddrPubkeyRelationKeyPrefix         = []byte{0x03} // Prefix for address-pubkey relation
+	ValidatorMissedBlockHeightKeyPrefix = []byte{0x04} // Prefix for sparse missed block height markers
+	MissedBlockPruningIndexKeyPrefix    = []byte{0x05} // Prefix for sparse missed block pruning index
 )
 
 // ValidatorSigningInfoKey - stored by *Consensus* address (not operator address)
@@ -81,6 +87,31 @@ func ValidatorMissedBlockBitmapKey(v sdk.ConsAddress, chunkIndex int64) []byte {
 	binary.LittleEndian.PutUint64(bz, uint64(chunkIndex))
 
 	return append(ValidatorMissedBlockBitmapPrefixKey(v), bz...)
+}
+
+// ValidatorMissedBlockHeightPrefixKey returns the prefix for sparse missed block
+// markers for a validator.
+func ValidatorMissedBlockHeightPrefixKey(v sdk.ConsAddress) []byte {
+	return append(ValidatorMissedBlockHeightKeyPrefix, address.MustLengthPrefix(v.Bytes())...)
+}
+
+// ValidatorMissedBlockHeightKey returns the sparse missed block marker key for a
+// validator at a concrete block height.
+func ValidatorMissedBlockHeightKey(v sdk.ConsAddress, height int64) []byte {
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, uint64(height))
+
+	return append(ValidatorMissedBlockHeightPrefixKey(v), bz...)
+}
+
+// MissedBlockPruningIndexKey returns an ordered index key for pruning sparse
+// missed block markers older than the active signed block window.
+func MissedBlockPruningIndexKey(height int64, v sdk.ConsAddress) []byte {
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, uint64(height))
+
+	key := append(MissedBlockPruningIndexKeyPrefix, bz...)
+	return append(key, address.MustLengthPrefix(v.Bytes())...)
 }
 
 // AddrPubkeyRelationKey gets pubkey relation key used to get the pubkey from the address

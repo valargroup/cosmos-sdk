@@ -3,9 +3,12 @@ package keeper_test
 import (
 	"time"
 
+	"cosmossdk.io/core/comet"
+
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing/testutil"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
+	"go.uber.org/mock/gomock"
 )
 
 func (s *KeeperTestSuite) TestValidatorSigningInfo() {
@@ -94,5 +97,59 @@ func (s *KeeperTestSuite) TestValidatorMissedBlockBitmap_SmallWindow() {
 		missedBlocks, err = keeper.GetValidatorMissedBlocks(ctx, consAddr)
 		require.NoError(err)
 		require.Len(missedBlocks, int(params.SignedBlocksWindow)-1)
+	}
+}
+
+func (s *KeeperTestSuite) TestHandleValidatorSignatureSparseWrites() {
+	require := s.Require()
+
+	tests := []struct {
+		name          string
+		flag          comet.BlockIDFlag
+		wantCounter   int64
+		wantMissedKey bool
+	}{
+		{
+			name:          "signed block does not mutate liveness state",
+			flag:          comet.BlockIDFlagCommit,
+			wantCounter:   0,
+			wantMissedKey: false,
+		},
+		{
+			name:          "missed block records sparse marker",
+			flag:          comet.BlockIDFlagAbsent,
+			wantCounter:   1,
+			wantMissedKey: true,
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.SetupTest()
+			ctx, keeper := s.ctx.WithBlockHeight(10), s.slashingKeeper
+
+			signingInfo := slashingtypes.NewValidatorSigningInfo(
+				consAddr,
+				1,
+				0,
+				time.Unix(0, 0).UTC(),
+				false,
+				0,
+			)
+			require.NoError(keeper.SetValidatorSigningInfo(ctx, consAddr, signingInfo))
+
+			s.stakingKeeper.EXPECT().IsValidatorJailed(gomock.Any(), consAddr).Return(false, nil)
+
+			require.NoError(keeper.HandleValidatorSignature(ctx, consAddr.Bytes(), 1, tt.flag))
+
+			info, err := keeper.GetValidatorSigningInfo(ctx, consAddr)
+			require.NoError(err)
+			require.Equal(tt.wantCounter, info.MissedBlocksCounter)
+			require.Equal(int64(0), info.IndexOffset)
+
+			missed, err := keeper.HasMissedBlockAtHeight(ctx, consAddr, ctx.BlockHeight())
+			require.NoError(err)
+			require.Equal(tt.wantMissedKey, missed)
+		})
 	}
 }
