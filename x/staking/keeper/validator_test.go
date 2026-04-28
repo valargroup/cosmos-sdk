@@ -86,45 +86,6 @@ func (s *KeeperTestSuite) TestValidator() {
 	require.Equal(int64(0), resPower)
 }
 
-func (s *KeeperTestSuite) TestValidatorUpdatesPersistence() {
-	ctx, keeper := s.ctx, s.stakingKeeper
-	require := s.Require()
-
-	valPubKey := PKs[0]
-	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
-	valTokens := keeper.TokensFromConsensusPower(ctx, 10)
-
-	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
-	validator, _ = validator.AddTokensFromDel(valTokens)
-	require.NoError(keeper.SetValidator(ctx, validator))
-	require.NoError(keeper.SetValidatorByPowerIndex(ctx, validator))
-	require.NoError(keeper.SetValidatorByConsAddr(ctx, validator))
-
-	s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), stakingtypes.NotBondedPoolName, stakingtypes.BondedPoolName, gomock.Any())
-
-	tests := []struct {
-		name        string
-		wantUpdates int
-		wantStored  int
-	}{
-		{name: "validator set change is persisted", wantUpdates: 1, wantStored: 1},
-		{name: "empty validator set update clears persisted value", wantUpdates: 0, wantStored: 0},
-		{name: "subsequent empty update stays absent", wantUpdates: 0, wantStored: 0},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			updates := s.applyValidatorSetUpdates(ctx, keeper, tt.wantUpdates)
-			storedUpdates, err := keeper.GetValidatorUpdates(ctx)
-			require.NoError(err)
-			require.Len(storedUpdates, tt.wantStored)
-			if tt.wantStored > 0 {
-				require.Equal(updates, storedUpdates)
-			}
-		})
-	}
-}
-
 // This function tests UpdateValidator, GetValidator, GetLastValidators, RemoveValidator
 func (s *KeeperTestSuite) TestValidatorBasics() {
 	ctx, keeper := s.ctx, s.stakingKeeper

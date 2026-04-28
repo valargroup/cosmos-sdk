@@ -156,29 +156,12 @@ func (k Keeper) SetValidatorUpdates(ctx context.Context, valUpdates []abci.Valid
 	return store.Set(types.ValidatorUpdatesKey, bz)
 }
 
-// ClearValidatorUpdates removes any previously persisted ABCI validator power
-// updates.
-func (k Keeper) ClearValidatorUpdates(ctx context.Context) error {
-	store := k.storeService.OpenKVStore(ctx)
-	bz, err := store.Get(types.ValidatorUpdatesKey)
-	if err != nil {
-		return err
-	}
-	if bz == nil {
-		return nil
-	}
-	return store.Delete(types.ValidatorUpdatesKey)
-}
-
 // GetValidatorUpdates returns the ABCI validator power updates within the current block.
 func (k Keeper) GetValidatorUpdates(ctx context.Context) ([]abci.ValidatorUpdate, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	bz, err := store.Get(types.ValidatorUpdatesKey)
 	if err != nil {
 		return nil, err
-	}
-	if bz == nil {
-		return nil, nil
 	}
 
 	var valUpdates types.ValidatorUpdates
