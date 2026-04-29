@@ -22,10 +22,9 @@ const (
 	// validator missed block bitmap. Chunks are used to reduce the storage and
 	// write overhead of IAVL nodes. The total size of the bitmap is roughly in
 	// the range [0, SignedBlocksWindow) where each bit represents a block. A
-	// validator's IndexOffset modulo the SignedBlocksWindow is used to retrieve
-	// the chunk in that bitmap range. Once the chunk is retrieved, the same index
-	// is used to check or flip a bit, where if a bit is set, it indicates the
-	// validator missed that block.
+	// validator's liveness index within that range is used to retrieve the chunk.
+	// Once the chunk is retrieved, the same index is used to check or flip a bit,
+	// where if a bit is set, it indicates the validator missed that block.
 	//
 	// For a bitmap of N items, i.e. a validator's signed block window, the amount
 	// of write complexity per write with a factor of f being the overhead of
