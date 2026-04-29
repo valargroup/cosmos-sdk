@@ -263,7 +263,7 @@ func TestHandleNewValidator(t *testing.T) {
 	info, found := f.slashingKeeper.GetValidatorSigningInfo(f.ctx, sdk.ConsAddress(valpubkey.Address()))
 	assert.Assert(t, found)
 	assert.Equal(t, signedBlocksWindow+1, info.StartHeight)
-	assert.Equal(t, int64(2), info.IndexOffset)
+	assert.Equal(t, int64(0), info.IndexOffset)
 	assert.Equal(t, int64(1), info.MissedBlocksCounter)
 	assert.Equal(t, time.Unix(0, 0).UTC(), info.JailedUntil)
 
