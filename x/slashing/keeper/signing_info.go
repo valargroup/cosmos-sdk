@@ -132,8 +132,7 @@ func (k Keeper) setMissedBlockBitmapChunk(ctx context.Context, addr sdk.ConsAddr
 // GetMissedBlockBitmapValue returns true if a validator missed signing a block
 // at the given index and false otherwise. The index provided is assumed to be
 // the index in the range [0, SignedBlocksWindow), which represents the bitmap
-// where each bit represents a height, and is determined by the validator's
-// IndexOffset modulo SignedBlocksWindow. This index is used to fetch the chunk
+// where each bit represents a height. This index is used to fetch the chunk
 // in the bitmap and the relative bit in that chunk.
 func (k Keeper) GetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddress, index int64) (bool, error) {
 	// get the chunk or "word" in the logical bitmap
@@ -160,10 +159,8 @@ func (k Keeper) GetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddr
 // SetMissedBlockBitmapValue sets, i.e. flips, a bit in the validator's missed
 // block bitmap. When missed=true, the bit is set, otherwise it set to zero. The
 // index provided is assumed to be the index in the range [0, SignedBlocksWindow),
-// which represents the bitmap where each bit represents a height, and is
-// determined by the validator's IndexOffset modulo SignedBlocksWindow. This
-// index is used to fetch the chunk in the bitmap and the relative bit in that
-// chunk.
+// which represents the bitmap where each bit represents a height. This index is
+// used to fetch the chunk in the bitmap and the relative bit in that chunk.
 func (k Keeper) SetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddress, index int64, missed bool) error {
 	// get the chunk or "word" in the logical bitmap
 	chunkIndex := index / types.MissedBlockBitmapChunkSize
