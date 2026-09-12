@@ -113,6 +113,10 @@ func (s *Server) Start(ctx context.Context, cfg config.Config) error {
 	s.mtx.Lock()
 
 	cmtCfg := tmrpcserver.DefaultConfig()
+	// REST and gRPC bodies are not JSON-RPC batches. Leave body consumption
+	// to their handlers while retaining Comet's MaxBytesReader and deadlines.
+	// The consensus JSON-RPC listener keeps its independent batch limit.
+	cmtCfg.MaxRequestBatchSize = 0
 	cmtCfg.MaxOpenConnections = int(cfg.API.MaxOpenConnections)
 	cmtCfg.ReadTimeout = time.Duration(cfg.API.RPCReadTimeout) * time.Second
 	cmtCfg.WriteTimeout = time.Duration(cfg.API.RPCWriteTimeout) * time.Second
